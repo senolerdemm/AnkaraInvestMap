@@ -1,0 +1,6 @@
+@EstechApi_HostAddress = http://localhost:5173
+
+GET {{EstechApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

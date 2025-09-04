@@ -1,0 +1,55 @@
+# Build outputs
+bin/
+obj/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+# Rider / JetBrains IDE
+.idea/
+*.sln.iml
+
+# VSCode
+.vscode/
+.history/
+
+# macOS system files
+.DS_Store
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# NuGet packages
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Backup & temp files
+*.tmp
+*.bak
+*.swp
+*.orig
+
+# Resharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Coverage / testing
+coverage/
+*.coverage
+*.coveragexml
+TestResult.xml
+TestResults/
+
+# Publish outputs
+publish/
