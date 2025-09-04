@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using EstechApi.Models;
 using EstechApi.Utils;
 using Newtonsoft.Json.Linq;
@@ -11,16 +13,23 @@ namespace EstechApi.Controllers
     {
         private readonly string _basePath;
 
-        public AskController()
+        public AskController(IWebHostEnvironment env, IConfiguration cfg)
         {
-            // Çalışma dizini -> bin/Debug/net8.0
-            // 3 klasör yukarı çık -> backend/Data
-            _basePath = Path.GetFullPath(
-                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "project-root", "AnkaraInvestMap", "backend", "Data")
-            );
+            // 1) Öncelik: Ortam değişkeni (CI/CD veya farklı makine için kolay)
+            var fromEnv = Environment.GetEnvironmentVariable("DATA_DIR");
 
+            // 2) Alternatif: appsettings.json -> "DataDir"
+            var fromConfig = cfg["DataDir"];
+
+            // 3) Varsayılan: Proje kökü (ContentRoot) altındaki "Data"
+            _basePath = !string.IsNullOrWhiteSpace(fromEnv)
+                ? fromEnv
+                : !string.IsNullOrWhiteSpace(fromConfig)
+                    ? fromConfig
+                    : Path.Combine(env.ContentRootPath, "Data");
 
             Console.WriteLine($"[AskController] BasePath: {_basePath}");
+            Directory.CreateDirectory(_basePath); // yoksa oluştur
         }
 
         [HttpPost]
@@ -28,14 +37,12 @@ namespace EstechApi.Controllers
         {
             var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
             if (string.IsNullOrEmpty(apiKey))
-            {
-                return BadRequest(new { error = "❌ OpenAI API key bulunamadı." });
-            }
+                return BadRequest(new { error = "❌ OPENAI_API_KEY bulunamadı." });
 
             var allRecords = new List<AgricultureData>();
             var readingSummary = new List<object>();
 
-            // Alt klasörleri tanımla
+            // Alt klasörler (İSİMLERİN DİSKTEKİYLE BİREBİR OLMASI GEREKİR)
             var subFolders = new[]
             {
                 Path.Combine("Eğitim ve Kültür", "İL BAZINDA"),
@@ -51,24 +58,23 @@ namespace EstechApi.Controllers
                 var folderPath = Path.Combine(_basePath, folder);
                 Console.WriteLine($"[AskController] Klasör kontrol: {folderPath}");
 
-                if (Directory.Exists(folderPath))
-                {
-                    var folderData = CsvReaderUtil.ReadAllCsvs(folderPath);
-                    var limitedData = folderData.Take(50).ToList();
-                    allRecords.AddRange(limitedData);
-
-                    readingSummary.Add(new
-                    {
-                        folder,
-                        totalRecords = folderData.Count,
-                        usedRecords = limitedData.Count,
-                        categories = folderData.Select(x => x.Category).Distinct().Take(30).ToList()
-                    });
-                }
-                else
+                if (!Directory.Exists(folderPath))
                 {
                     Console.WriteLine($"[AskController] ❌ Klasör bulunamadı: {folderPath}");
+                    continue;
                 }
+
+                var folderData = CsvReaderUtil.ReadAllCsvs(folderPath);
+                var limitedData = folderData.Take(50).ToList();
+                allRecords.AddRange(limitedData);
+
+                readingSummary.Add(new
+                {
+                    folder,
+                    totalRecords = folderData.Count,
+                    usedRecords = limitedData.Count,
+                    categories = folderData.Select(x => x.Category).Distinct().Take(30).ToList()
+                });
             }
 
             if (!allRecords.Any())
@@ -83,26 +89,21 @@ namespace EstechApi.Controllers
 
             // Sampling
             var sampleRecords = new List<AgricultureData>();
-            foreach (var category in categoryStats.Take(30))
+            foreach (var c in categoryStats.Take(30))
             {
-                var categoryRecords = allRecords
-                    .Where(r => r.Category == category.Category)
-                    .Take(20)
-                    .ToList();
-                sampleRecords.AddRange(categoryRecords);
+                var items = allRecords.Where(r => r.Category == c.Category).Take(20).ToList();
+                sampleRecords.AddRange(items);
             }
 
-            // GPT context hazırla
+            // GPT context
             var context = string.Join("\n", sampleRecords.Select(m =>
                 $"Kategori: {m.Category}, Alt Kategori: {m.SubCategory}, Yıl: {m.Year}, İlçe: {m.District}, Değer: {m.Value}"));
 
-            var systemPrompt = $@"Sen bir yatırım danışmanısın. Aşağıdaki Türkiye/Ankara verilerine göre analiz yap ve yatırım önerisi ver.
-
+            var systemPrompt =
+$@"Sen bir yatırım danışmanısın. Aşağıdaki Türkiye/Ankara verilerine göre analiz yap ve yatırım önerisi ver.
 Veri Kategorileri: {string.Join(", ", categoryStats.Take(100).Select(c => c.Category))}
-
 Veri Detayları:
 {context}
-
 Bu verilere dayanarak soruları yanıtla ve yatırım önerileri ver.";
 
             using var client = new HttpClient();
@@ -123,8 +124,29 @@ Bu verilere dayanarak soruları yanıtla ve yatırım önerileri ver.";
             var response = await client.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", payload);
             var result = await response.Content.ReadAsStringAsync();
 
-            var json = JObject.Parse(result);
-            var reply = json["choices"]?[0]?["message"]?["content"]?.ToString();
+            if (!response.IsSuccessStatusCode)
+            {
+                return BadRequest(new
+                {
+                    error = "LLM çağrısı başarısız",
+                    status = (int)response.StatusCode,
+                    body = result
+                });
+            }
+
+            string? reply = null;
+            try
+            {
+                var json = JObject.Parse(result);
+                reply = json["choices"]?[0]?["message"]?["content"]?.ToString();
+            }
+            catch
+            {
+                reply = null;
+            }
+
+            if (string.IsNullOrWhiteSpace(reply))
+                reply = "Model yanıtı alınamadı.";
 
             return Ok(new
             {
