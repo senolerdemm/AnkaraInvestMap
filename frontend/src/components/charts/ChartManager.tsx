@@ -4,6 +4,7 @@ import GenericChart from "./GenericChart.tsx";
 interface Props {
   selectedDistrict: string;
   category: string;
+  onAgricultureSubChange?: (subDataType: string) => void; // Yeni prop
 }
 
 const AGRICULTURE_CHARTS = [
@@ -13,6 +14,7 @@ const AGRICULTURE_CHARTS = [
     title: "Arıcılık İşletme Sayısı",
     unit: "işletme",
     color: "#fbc02d",
+    dataType: "beekeeping",
   },
   {
     endpoint: "Agriculture/livestock",
@@ -20,6 +22,7 @@ const AGRICULTURE_CHARTS = [
     title: "Canlı Hayvan Sayısı",
     unit: "baş",
     color: "#8d6e63",
+    dataType: "livestock",
   },
   {
     endpoint: "Agriculture/poultry",
@@ -27,6 +30,7 @@ const AGRICULTURE_CHARTS = [
     title: "Diğer Kümes Hayvanları Sayısı",
     unit: "adet",
     color: "#e64a19",
+    dataType: "poultry",
   },
   {
     endpoint: "Agriculture/chicken",
@@ -34,6 +38,7 @@ const AGRICULTURE_CHARTS = [
     title: "Et Tavuğu Sayısı",
     unit: "adet",
     color: "#1976d2",
+    dataType: "chicken",
   },
   {
     endpoint: "Agriculture/fallow-land",
@@ -41,6 +46,7 @@ const AGRICULTURE_CHARTS = [
     title: "Nadas Alanı",
     unit: "dekar",
     color: "#388e3c",
+    dataType: "fallow-land",
   },
   {
     endpoint: "Agriculture/greenhouse",
@@ -48,6 +54,7 @@ const AGRICULTURE_CHARTS = [
     title: "Örtüaltı Tarım Alanı",
     unit: "dekar",
     color: "#7b1fa2",
+    dataType: "greenhouse",
   },
   {
     endpoint: "Agriculture/tractors",
@@ -55,6 +62,7 @@ const AGRICULTURE_CHARTS = [
     title: "Traktör Sayısı",
     unit: "adet",
     color: "#455a64",
+    dataType: "tractors",
   },
   {
     endpoint: "Agriculture/wheat",
@@ -62,8 +70,10 @@ const AGRICULTURE_CHARTS = [
     title: "Buğday Üretim Miktarı",
     unit: "ton",
     color: "#ffb300",
+    dataType: "wheat",
   },
 ];
+
 const ENERGY_ENVIRONMENT_CHARTS = [
   {
     endpoint: "EnergyEnvironment/atik_su_aritma_tesisi_kapasitesi",
@@ -115,6 +125,7 @@ const ENERGY_ENVIRONMENT_CHARTS = [
     color: "#c2185b",
   },
 ];
+
 const EMPLOYMENT_CHARTS = [
   {
     endpoint: "Employment/isgucu-katilma-orani",
@@ -183,6 +194,7 @@ const EDUCATION_CHARTS = [
     color: "#512da8",
   },
 ];
+
 const TRANSPORTATION_CHARTS = [
   {
     endpoint: "Transportation/otomobil-sayisi",
@@ -208,7 +220,11 @@ const CHART_CATEGORIES = {
   "İstihdam ve İşsizlik": EMPLOYMENT_CHARTS,
 };
 
-const ChartManager = ({ selectedDistrict, category }: Props) => {
+const ChartManager = ({
+  selectedDistrict,
+  category,
+  onAgricultureSubChange,
+}: Props) => {
   const charts = CHART_CATEGORIES[category as keyof typeof CHART_CATEGORIES];
   if (!charts) return null;
 
@@ -223,6 +239,16 @@ const ChartManager = ({ selectedDistrict, category }: Props) => {
           title={chart.title}
           unit={chart.unit}
           color={chart.color}
+          onClick={
+            category === "Tarım ve Hayvancılık" && "dataType" in chart
+              ? () => {
+                  console.log(
+                    `Tarım alt kategorisi tıklandı: ${chart.dataType}`
+                  );
+                  onAgricultureSubChange?.(chart.dataType);
+                }
+              : undefined
+          }
         />
       ))}
     </Stack>

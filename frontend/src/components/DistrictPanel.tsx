@@ -15,8 +15,10 @@ import {
 import {
   People,
   TrendingUp,
+  TrendingDown,
   BarChart,
   LocationOn,
+  Remove,
   ExpandMore,
   School,
   LocalHospital,
@@ -42,6 +44,8 @@ import ChartManager from "./charts/ChartManager.tsx";
 
 interface Props {
   selectedDistrict: string;
+  onCategoryChange?: (category: string, dataType: string) => void;
+  onAgricultureSubChange?: (subDataType: string) => void;
 }
 
 interface PopulationData {
@@ -70,16 +74,12 @@ interface PopulationProcessedData {
   };
 }
 
-const DistrictPanel = ({ selectedDistrict }: Props) => {
-  const [categories] = useState([
-    "Çevre ve Enerji",
-    "Eğitim ve Kültür",
-    "İstihdam ve İşsizlik",
-    "Nüfus ve Demografi",
-    "Tarım ve Hayvancılık",
-    "Ulaştırma ve Haberleşme",
-  ]);
-
+const DistrictPanel = ({
+  selectedDistrict,
+  onCategoryChange,
+  onAgricultureSubChange,
+}: Props) => {
+  const [categories, setCategories] = useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] =
     useState<string>("Nüfus ve Demografi");
   const [populationData, setPopulationData] =
@@ -93,10 +93,60 @@ const DistrictPanel = ({ selectedDistrict }: Props) => {
     "Sanayi",
     "Sağlık ve Sosyal Koruma",
     "Eğitim ve Kültür",
-    "Çevre ve Enerji", // ← Bu kategori için
+    "Çevre ve Enerji",
     "Ulaştırma ve Haberleşme",
     "İstihdam ve İşsizlik",
   ];
+
+  // Kategori setini selectedDistrict'e göre belirle
+  useEffect(() => {
+    if (selectedDistrict === "Ankara (Genel)") {
+      setCategories([
+        "Çevre ve Enerji",
+        "Eğitim ve Kültür",
+        "İstihdam ve İşsizlik",
+        "Nüfus ve Demografi",
+        "Tarım ve Hayvancılık",
+        "Ulaştırma ve Haberleşme",
+      ]);
+    } else {
+      setCategories(["Nüfus ve Demografi", "Tarım ve Hayvancılık"]);
+    }
+    // her seçimde başlangıç "Nüfus ve Demografi"
+    setExpandedCategory("Nüfus ve Demografi");
+  }, [selectedDistrict]);
+
+  // Kategori için varsayılan veri tipleri
+  const getDefaultDataType = (category: string) => {
+    const defaultDataTypes: { [key: string]: string } = {
+      "Nüfus ve Demografi": "population",
+      "Tarım ve Hayvancılık": "beekeeping",
+    };
+    return defaultDataTypes[category] || "population";
+  };
+
+  // Accordion expand
+  const handleCategoryExpand = (category: string) => {
+    const newCategory = expandedCategory === category ? "" : category;
+    setExpandedCategory(newCategory);
+
+    const validMapCategories = ["Nüfus ve Demografi", "Tarım ve Hayvancılık"];
+
+    if (
+      onCategoryChange &&
+      newCategory &&
+      validMapCategories.includes(newCategory)
+    ) {
+      const defaultDataType = getDefaultDataType(newCategory);
+      onCategoryChange(newCategory, defaultDataType);
+      console.log("Panel kategori değişikliği:", newCategory, defaultDataType);
+    } else if (onCategoryChange && newCategory) {
+      console.log(
+        `${newCategory} için ilçe bazlı veri yok, nüfus haritası gösteriliyor.`
+      );
+      onCategoryChange("Nüfus ve Demografi", "population");
+    }
+  };
 
   useEffect(() => {
     loadPopulationData();
@@ -119,7 +169,6 @@ const DistrictPanel = ({ selectedDistrict }: Props) => {
       const populationRawData: PopulationData[] = await populationRes.json();
       const growthRawData: GrowthRateData[] = await growthRes.json();
 
-      // Global data store (kategoriler arası paylaşım için)
       (window as any).districtPanelData = {
         population: populationRawData,
         growthRates: growthRawData,
@@ -295,11 +344,7 @@ const DistrictPanel = ({ selectedDistrict }: Props) => {
               <Accordion
                 key={category}
                 expanded={expandedCategory === category}
-                onChange={() =>
-                  setExpandedCategory(
-                    expandedCategory === category ? "" : category
-                  )
-                }
+                onChange={() => handleCategoryExpand(category)}
                 disabled={!activeCategories.includes(category)}
               >
                 <AccordionSummary expandIcon={<ExpandMore />}>
@@ -389,20 +434,20 @@ const DistrictPanel = ({ selectedDistrict }: Props) => {
                       </Stack>
                     )}
 
-                  {/* Dinamik kategoriler - ChartManager kullanarak */}
-
+                  {/* Dinamik kategoriler */}
                   {[
                     "Tarım ve Hayvancılık",
                     "Sanayi",
                     "Sağlık ve Sosyal Koruma",
                     "Eğitim ve Kültür",
                     "Çevre ve Enerji",
-                    "Ulaştırma ve Haberleşme", // ← BU SATIRI EKLEYİN
+                    "Ulaştırma ve Haberleşme",
                     "İstihdam ve İşsizlik",
                   ].includes(category) && (
                     <ChartManager
                       selectedDistrict={selectedDistrict}
                       category={category}
+                      onAgricultureSubChange={onAgricultureSubChange}
                     />
                   )}
 

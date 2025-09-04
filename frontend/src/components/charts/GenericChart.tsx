@@ -7,6 +7,7 @@ import {
   Chip,
   Alert,
   CircularProgress,
+  Button,
 } from "@mui/material";
 import { TrendingUp, TrendingDown, Remove } from "@mui/icons-material";
 import {
@@ -47,6 +48,7 @@ interface Props {
   title: string;
   unit: string;
   color?: string;
+  onClick?: () => void; // 👈 Haritada gösterme için
 }
 
 const GenericChart = ({
@@ -56,6 +58,7 @@ const GenericChart = ({
   title,
   unit,
   color = "#1976d2",
+  onClick,
 }: Props) => {
   const [data, setData] = useState<ProcessedData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -71,17 +74,11 @@ const GenericChart = ({
 
   const normalizeDistrict = (district: string) => {
     if (!district) return "";
+    if (district === "Ankara (Genel)") return "Ankara (Genel)";
 
-    // İl geneli için özel case
-    if (district === "Ankara (Genel)") {
-      return "Ankara (Genel)";
-    }
-
-    // Örn: "Ankara(Sincan)-1747" → "Sincan"
     const match = district.match(/\((.*?)\)/);
     if (match) return match[1].trim();
 
-    // Örn: "Keçiören-123" → "Keçiören"
     if (district.includes("-")) return district.split("-")[0].trim();
 
     return district.trim();
@@ -176,13 +173,15 @@ const GenericChart = ({
   }
 
   return (
-    <Card variant="outlined">
+    <Card variant="outlined" sx={{ position: "relative" }}>
       <CardContent>
+        {/* Başlık */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
           <Typography variant="h6">{title}</Typography>
           {getTrendIcon(data.trend)}
         </Box>
 
+        {/* Grafik */}
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={data.chartData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -201,6 +200,7 @@ const GenericChart = ({
           </LineChart>
         </ResponsiveContainer>
 
+        {/* Alt bilgi */}
         <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
           <Chip
             label={`${data.totalYears} yıl verisi`}
@@ -208,11 +208,25 @@ const GenericChart = ({
             size="small"
           />
           <Chip
-            label={`Son: ${data.lastValue} ${unit}`}
+            label={`Son: ${data.lastValue.toLocaleString()} ${unit}`}
             variant="outlined"
             size="small"
           />
         </Box>
+
+        {/* 👇 Yeni buton */}
+        {onClick && (
+          <Box sx={{ mt: 2, textAlign: "right" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              onClick={onClick}
+            >
+              Haritada Göster
+            </Button>
+          </Box>
+        )}
       </CardContent>
     </Card>
   );
