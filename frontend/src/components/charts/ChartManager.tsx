@@ -4,7 +4,7 @@ import GenericChart from "./GenericChart.tsx";
 interface Props {
   selectedDistrict: string;
   category: string;
-  onAgricultureSubChange?: (subDataType: string) => void; // Yeni prop
+  onAgricultureSubChange?: (subDataType: string) => void;
 }
 
 const AGRICULTURE_CHARTS = [
@@ -230,27 +230,37 @@ const ChartManager = ({
 
   return (
     <Stack spacing={3}>
-      {charts.map((chart, index) => (
-        <GenericChart
-          key={`${chart.endpoint}-${chart.category}-${index}`}
-          selectedDistrict={selectedDistrict}
-          endpoint={chart.endpoint}
-          category={chart.category}
-          title={chart.title}
-          unit={chart.unit}
-          color={chart.color}
-          onClick={
-            category === "Tarım ve Hayvancılık" && "dataType" in chart
-              ? () => {
-                  console.log(
-                    `Tarım alt kategorisi tıklandı: ${chart.dataType}`
-                  );
-                  onAgricultureSubChange?.(chart.dataType);
-                }
-              : undefined
-          }
-        />
-      ))}
+      {charts.map((chart, index) => {
+        const safeKey = `${chart.endpoint.replace(/\W/g, "_")}-${index}`;
+        console.log(
+          "Rendering chart:",
+          chart.title,
+          "-> endpoint:",
+          chart.endpoint
+        );
+
+        return (
+          <GenericChart
+            key={safeKey}
+            selectedDistrict={selectedDistrict}
+            endpoint={chart.endpoint}
+            category={chart.category}
+            title={chart.title}
+            unit={chart.unit}
+            color={chart.color}
+            onClick={
+              category === "Tarım ve Hayvancılık" && "dataType" in chart
+                ? () => {
+                    console.log(
+                      `Tarım alt kategorisi tıklandı: ${chart.dataType}`
+                    );
+                    onAgricultureSubChange?.((chart as any).dataType);
+                  }
+                : undefined
+            }
+          />
+        );
+      })}
     </Stack>
   );
 };

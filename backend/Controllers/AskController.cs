@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using EstechApi.Models;
 using EstechApi.Utils;
 using Newtonsoft.Json.Linq;
 
@@ -8,6 +9,20 @@ namespace EstechApi.Controllers
     [Route("[controller]")]
     public class AskController : ControllerBase
     {
+        private readonly string _basePath;
+
+        public AskController()
+        {
+            // Çalışma dizini -> bin/Debug/net8.0
+            // 3 klasör yukarı çık -> backend/Data
+            _basePath = Path.GetFullPath(
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "project-root", "AnkaraInvestMap", "backend", "Data")
+            );
+
+
+            Console.WriteLine($"[AskController] BasePath: {_basePath}");
+        }
+
         [HttpPost]
         public async Task<IActionResult> Ask([FromBody] AskRequest request)
         {
@@ -17,68 +32,67 @@ namespace EstechApi.Controllers
                 return BadRequest(new { error = "❌ OpenAI API key bulunamadı." });
             }
 
-            // 1) CSV verilerini oku - performans için sınırlı okuma
-            var basePath = "/Users/senolerdem/RiderProjects/EstechApi/EstechApi/project-root/backend/Data";
-            var allRecords = new List<EstechApi.Models.AgricultureData>();
+            var allRecords = new List<AgricultureData>();
             var readingSummary = new List<object>();
-            
-            // Tüm alt klasörleri manuel olarak tara - ama az kayıt al
+
+            // Alt klasörleri tanımla
             var subFolders = new[]
             {
-                "Eğitim ve Kültür/İL BAZINDA",
-                "ENERJİ VE ÇEVRE/İL BAZINDA", 
-                "İSTİHDAM VE İŞSİZLİK 2/İL BAZINDA",
+                Path.Combine("Eğitim ve Kültür", "İL BAZINDA"),
+                Path.Combine("ENERJİ VE ÇEVRE", "İL BAZINDA"),
+                Path.Combine("İSTİHDAM VE İŞSİZLİK 2", "İL BAZINDA"),
                 "Nufus",
                 "TarımHayvancilik",
-                "Ulasım"
+                "Ulasim"
             };
-            
+
             foreach (var folder in subFolders)
             {
-                var folderPath = Path.Combine(basePath, folder);
+                var folderPath = Path.Combine(_basePath, folder);
+                Console.WriteLine($"[AskController] Klasör kontrol: {folderPath}");
+
                 if (Directory.Exists(folderPath))
                 {
                     var folderData = CsvReaderUtil.ReadAllCsvs(folderPath);
-                    var limitedData = folderData.Take(50).ToList(); // Her klasörden sadece 5 kayıt
+                    var limitedData = folderData.Take(50).ToList();
                     allRecords.AddRange(limitedData);
-                    
-                    readingSummary.Add(new {
-                        folder = folder,
+
+                    readingSummary.Add(new
+                    {
+                        folder,
                         totalRecords = folderData.Count,
                         usedRecords = limitedData.Count,
                         categories = folderData.Select(x => x.Category).Distinct().Take(30).ToList()
                     });
                 }
-            }
-            
-            var records = allRecords;
-
-            if (!records.Any())
-            {
-                return Ok(new { reply = "⚠️ CSV verisi bulunamadı." });
+                else
+                {
+                    Console.WriteLine($"[AskController] ❌ Klasör bulunamadı: {folderPath}");
+                }
             }
 
-            // 2) Kategori dağılımını görmek için grupla
-            var categoryStats = records
+            if (!allRecords.Any())
+                return Ok(new { reply = "⚠️ CSV verisi bulunamadı.", basePath = _basePath });
+
+            // Kategorilere göre grupla
+            var categoryStats = allRecords
                 .GroupBy(r => r.Category)
                 .Select(g => new { Category = g.Key, Count = g.Count() })
                 .OrderByDescending(x => x.Count)
                 .ToList();
 
-            // 3) Daha çeşitli veri almak için her kategoriden eşit miktarda al
-            var sampleRecords = new List<EstechApi.Models.AgricultureData>();
-            
-            foreach (var category in categoryStats.Take(30)) // İlk 8 kategori
+            // Sampling
+            var sampleRecords = new List<AgricultureData>();
+            foreach (var category in categoryStats.Take(30))
             {
-                var categoryRecords = records
+                var categoryRecords = allRecords
                     .Where(r => r.Category == category.Category)
-                    .Take(20) // Her kategoriden 5 kayıt
+                    .Take(20)
                     .ToList();
-                
                 sampleRecords.AddRange(categoryRecords);
             }
 
-            // 4) GPT'ye gönderilecek context hazırla - daha detaylı
+            // GPT context hazırla
             var context = string.Join("\n", sampleRecords.Select(m =>
                 $"Kategori: {m.Category}, Alt Kategori: {m.SubCategory}, Yıl: {m.Year}, İlçe: {m.District}, Değer: {m.Value}"));
 
@@ -91,7 +105,6 @@ Veri Detayları:
 
 Bu verilere dayanarak soruları yanıtla ve yatırım önerileri ver.";
 
-            // 5) GPT çağır
             using var client = new HttpClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
@@ -110,52 +123,49 @@ Bu verilere dayanarak soruları yanıtla ve yatırım önerileri ver.";
             var response = await client.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", payload);
             var result = await response.Content.ReadAsStringAsync();
 
-            // 6) JSON'dan cevabı ayıkla
             var json = JObject.Parse(result);
             var reply = json["choices"]?[0]?["message"]?["content"]?.ToString();
 
             return Ok(new
             {
                 reply,
-                dataStats = new 
+                dataStats = new
                 {
-                    totalRecords = records.Count,
+                    totalRecords = allRecords.Count,
                     usedRecords = sampleRecords.Count,
-                    readingSummary = readingSummary, // Hangi klasörlerden ne kadar veri okuduğu
+                    readingSummary,
                     categoriesUsed = categoryStats.Take(8).ToList(),
-                    actualDataSample = sampleRecords.Take(20).Select(r => new {
+                    actualDataSample = sampleRecords.Take(20).Select(r => new
+                    {
                         r.Category,
-                        r.SubCategory, 
+                        r.SubCategory,
                         r.Year,
                         r.District,
                         r.Value,
                         r.SourceFile
-                    }).ToList() // GPT'ye gönderilen gerçek veri örnekleri
+                    }).ToList()
                 }
             });
         }
 
-        // Debug endpoint - hangi veriler okunuyor görmek için
         [HttpGet("debug")]
         public IActionResult Debug()
         {
-            var basePath = "/Users/senolerdem/RiderProjects/EstechApi/EstechApi/project-root/backend/Data";
-            var allRecords = new List<EstechApi.Models.AgricultureData>();
-            
-            // Tüm alt klasörleri manuel olarak tara
+            var allRecords = new List<AgricultureData>();
+
             var subFolders = new[]
             {
-                "Eğitim ve Kültür/İL BAZINDA",
-                "ENERJİ VE ÇEVRE/İL BAZINDA", 
-                "İSTİHDAM VE İŞSİZLİK 2/İL BAZINDA",
+                Path.Combine("Eğitim ve Kültür", "İL BAZINDA"),
+                Path.Combine("ENERJİ VE ÇEVRE", "İL BAZINDA"),
+                Path.Combine("İSTİHDAM VE İŞSİZLİK 2", "İL BAZINDA"),
                 "Nufus",
-                "TarımHayvancilik", 
-                "Ulasım"
+                "TarımHayvancilik",
+                "Ulasim"
             };
-            
+
             foreach (var folder in subFolders)
             {
-                var folderPath = Path.Combine(basePath, folder);
+                var folderPath = Path.Combine(_basePath, folder);
                 if (Directory.Exists(folderPath))
                 {
                     var folderData = CsvReaderUtil.ReadAllCsvs(folderPath);
@@ -165,8 +175,9 @@ Bu verilere dayanarak soruları yanıtla ve yatırım önerileri ver.";
 
             var stats = allRecords
                 .GroupBy(r => r.Category)
-                .Select(g => new { 
-                    Category = g.Key, 
+                .Select(g => new
+                {
+                    Category = g.Key,
                     Count = g.Count(),
                     SubCategories = g.Select(x => x.SubCategory).Distinct().Count(),
                     SourceFiles = g.Select(x => x.SourceFile).Distinct().ToList()
@@ -174,7 +185,9 @@ Bu verilere dayanarak soruları yanıtla ve yatırım önerileri ver.";
                 .OrderByDescending(x => x.Count)
                 .ToList();
 
-            return Ok(new {
+            return Ok(new
+            {
+                basePath = _basePath,
                 totalRecords = allRecords.Count,
                 totalCategories = stats.Count,
                 categoryBreakdown = stats
