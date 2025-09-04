@@ -15,6 +15,7 @@ cd backend
 Gizli dosya olduğu için Visual Studio Solution Explorer da listelenmeyebilir.
 
 # 3) Backend’i çalıştır
+EstechApi.csproj dosyasını başlangıç ögesi olarak seçin
 dotnet restore
 dotnet run
 # -> http://localhost:5005  (Swagger: /swagger)
